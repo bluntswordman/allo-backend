@@ -1,116 +1,220 @@
-# Allo Bank Backend Developer Take-Home Test
+# Split Bill API
 
-Welcome, and thank you for your interest in joining Allo Bank Engineering!
+A Spring Boot REST API for recording shared expenses and calculating a deterministic settlement summary for a group. The service stores bill groups, participants, expenses, and split allocations in PostgreSQL using Flyway migrations.
 
-This challenge is intentionally open-ended. There is no skeleton, no guided steps, and no single correct answer. We want to see how you think, how you structure a solution, and what you consider important in production-grade code.
+## Technical Decisions
 
----
+- Java 17, Spring Boot 4.1.1, and Maven
+- PostgreSQL with Flyway-managed schema migrations
+- `BigDecimal` with scale 0 for all IDR monetary values
+- Equal split strategy with deterministic remainder allocation in request order
+- Greedy settlement after balance netting, with deterministic UUID tie-breaking
+- RFC Problem Details responses for validation and domain errors
 
-## The Challenge: Split Bill API
+The settlement algorithm removes redundant intermediate payments and produces a compact list of transfers. It is intentionally not presented as a mathematical global-minimum solver for every possible balance combination.
 
-Build a **Spring Boot REST API** that helps a group of people manage shared expenses and calculate who owes whom at the end.
+## Service Charge
 
-Think of a real scenario: a group trip, a team lunch, a shared apartment. People take turns paying for things, and at the end someone needs to figure out the fairest way to settle up.
+GitHub username: **bluntswordman**
 
-**Your API should, at minimum, support:**
+The application lowercases the configured username to `bluntswordman`, sums its character values to `1424`, and calculates `1424 % 10`. Therefore, every settlement response contains a computed `service_charge_pct` of **4**.
 
-1. Creating a bill group with a name and a list of participants
-2. Adding expenses to a group — who paid, how much, and who it was for
-3. Retrieving a settlement summary — a clear breakdown of who owes whom and how much
+The `service_charge_amount` is 4% of total group expenses, rounded to whole rupiah with `HALF_UP`. This value is informational and is not added to participant debts. The username defaults to `bluntswordman` and can be overridden with the `GITHUB_USERNAME` environment variable, while the percentage itself is computed in code and not hardcoded.
 
-Everything else is up to you.
+## Build and Test
 
----
+Prerequisites for local build and tests:
 
-## Technical Requirements
+- Java 17+
+- Docker-compatible runtime for PostgreSQL integration tests, such as Docker or Podman
 
-These are non-negotiable:
+Run all unit and PostgreSQL integration tests:
 
-- **Java 17+**, **Spring Boot**, **Maven**
-- **`BigDecimal`** for all monetary values — no `float` or `double`
-- **A `Dockerfile`** using a multi-stage build (see `Dockerfile.template` in this repo)
-- At least **one unit test** covering your settlement calculation logic
-- A **`README.md`** in your submission with:
-  - How to build and run your project
-  - Example `curl` commands for each endpoint
-  - Your **GitHub username** and your calculated **service charge** value (see Personalization section below)
-  - Answer to the submission question (see below)
+```bash
+./mvnw test
+```
 
----
+Testcontainers starts and removes PostgreSQL automatically. If Docker or Podman is unavailable, the integration test is skipped while pure calculation tests still run.
 
-## Personalization
+Build the executable JAR:
 
-Every settlement response must include two additional fields: `service_charge_pct` and `service_charge_amount`.
+```bash
+./mvnw clean package
+```
 
-The `service_charge_pct` is unique to you and is calculated as follows:
+## Run with Docker or Podman
 
-1. Take your GitHub username in **lowercase**
-2. Sum the Unicode (ASCII) values of all characters
-3. `service_charge_pct = (sum % 10)` — this gives a value between 0 and 9 (representing a percentage)
+The project includes a multi-stage `Dockerfile` and a `compose.yaml`, so Java, Maven, and PostgreSQL do not need to be installed locally for containerized execution.
 
-**Example:** GitHub username `johndoe47`
-- Unicode sum: `106+111+104+110+100+111+101+52+55` = `850`
-- `service_charge_pct = 850 % 10` = **0** (0%)
+Run with Docker:
 
-The `service_charge_amount` is this percentage applied to the total group expenses.
+```bash
+docker compose up --build
+```
 
-Include both fields in your settlement response. This value must be computed in code — do not hardcode it.
+Run with Podman:
 
----
+```bash
+podman compose up --build
+```
 
-## Show Your Skills
+The API is available at:
 
-The minimum requirements get you through the door. What you build beyond that is how you stand out.
+```text
+http://localhost:4110
+```
 
-Some directions to explore — pick what interests you, or invent your own:
+Stop services while preserving database data:
 
-- **Multiple split strategies** — equal split, split by percentage, split by exact amount per person
-- **Settlement optimization** — minimize the total number of transactions needed to settle all debts
-- **Payment recording** — mark a debt as paid and update outstanding balances
-- **Expense categories** — tag expenses (food, transport, accommodation) and show per-category summaries
-- **Audit trail** — track when expenses and payments were added
+```bash
+docker compose down
+```
 
-There is no bonus point checklist. We are looking at the quality of what you choose to build, not the quantity.
+or:
 
----
+```bash
+podman compose down
+```
+
+Stop services and remove PostgreSQL data:
+
+```bash
+docker compose down -v
+```
+
+or:
+
+```bash
+podman compose down -v
+```
+
+For a focused container run guide, see `RUN_WITH_DOCKER_OR_PODMAN.md`.
+
+## Run Locally
+
+Start only PostgreSQL:
+
+```bash
+docker compose up -d database
+```
+
+or:
+
+```bash
+podman compose up -d database
+```
+
+Then run the application:
+
+```bash
+./mvnw spring-boot:run
+```
+
+The default local connection is `jdbc:postgresql://localhost:5432/split_bill` with username and password `split_bill`. Override it with `DB_URL`, `DB_USERNAME`, and `DB_PASSWORD`.
+
+## API Examples
+
+All amounts are positive whole rupiah values. Replace the example UUID placeholders below with IDs returned by the create-group response.
+
+You can also import the Postman collection from `postman/split-bill-api.postman_collection.json`. Run the `Happy Path` folder in order after the API is available at `http://localhost:4110`; the collection stores returned IDs automatically as collection variables.
+
+### 1. Create a Group
+
+```bash
+curl --request POST http://localhost:4110/api/v1/groups \
+  --header 'Content-Type: application/json' \
+  --data '{
+    "name": "Bali Trip",
+    "participants": [
+      {"name": "Bedy"},
+      {"name": "Ani"},
+      {"name": "Doni"}
+    ]
+  }'
+```
+
+Example response:
+
+```json
+{
+  "id": "<group-id>",
+  "name": "Bali Trip",
+  "participants": [
+    {"id": "<bedy-id>", "name": "Bedy", "created_at": "..."},
+    {"id": "<ani-id>", "name": "Ani", "created_at": "..."},
+    {"id": "<doni-id>", "name": "Doni", "created_at": "..."}
+  ],
+  "created_at": "..."
+}
+```
+
+### 2. Add an Expense
+
+The beneficiary order determines who receives any remainder. For example, 100000 split between three people is allocated as 33334, 33333, and 33333.
+
+```bash
+curl --request POST http://localhost:4110/api/v1/groups/<group-id>/expenses \
+  --header 'Content-Type: application/json' \
+  --data '{
+    "description": "Makan malam",
+    "amount": 100000,
+    "paid_by_participant_id": "<bedy-id>",
+    "beneficiary_participant_ids": ["<bedy-id>", "<ani-id>", "<doni-id>"]
+  }'
+```
+
+The payer may be omitted from the beneficiary list, but every referenced participant must belong to the group in the URL.
+
+### 3. Get the Settlement
+
+```bash
+curl http://localhost:4110/api/v1/groups/<group-id>/settlements
+```
+
+Example response for the expense above:
+
+```json
+{
+  "group_id": "<group-id>",
+  "total_expenses": 100000,
+  "service_charge_pct": 4,
+  "service_charge_amount": 4000,
+  "balances": [
+    {"participant_id": "<ani-id>", "participant_name": "Ani", "net_balance": -33333},
+    {"participant_id": "<bedy-id>", "participant_name": "Bedy", "net_balance": 66666},
+    {"participant_id": "<doni-id>", "participant_name": "Doni", "net_balance": -33333}
+  ],
+  "settlements": [
+    {
+      "from_participant_id": "<ani-id>",
+      "from_participant_name": "Ani",
+      "to_participant_id": "<bedy-id>",
+      "to_participant_name": "Bedy",
+      "amount": 33333
+    },
+    {
+      "from_participant_id": "<doni-id>",
+      "from_participant_name": "Doni",
+      "to_participant_id": "<bedy-id>",
+      "to_participant_name": "Bedy",
+      "amount": 33333
+    }
+  ]
+}
+```
+
+A positive `net_balance` means the participant should receive money. A negative value means the participant owes money.
+
+## Validation Rules
+
+- A group requires a non-blank name and at least two participants.
+- Participant names must be unique within a group, ignoring case and surrounding whitespace.
+- An expense requires a description, a positive whole-rupiah amount, one payer, and at least one unique beneficiary.
+- The amount must be at least the number of beneficiaries so every stored share is at least 1.
+- Payer and beneficiaries must belong to the requested group.
 
 ## Submission Question
 
-In your `README.md`, answer the following in a short paragraph (3–5 sentences):
+**What was the hardest design decision you made while building this, and what trade-off did you accept?**
 
-> **"What was the hardest design decision you made while building this, and what trade-off did you accept?"**
-
-There is no wrong answer. We ask this because it tells us more about how you think than the code itself.
-
----
-
-## Submission Process
-
-1. **Create a private GitHub repository** for your solution
-2. **Add `allobankdev` as a collaborator** (Settings → Collaborators → Add people)
-3. **Include a `Dockerfile`** in the root of your project (see `Dockerfile.template`)
-4. **Submit via the form:** [Click Here](https://forms.gle/nZKQ2EjTCPfAKHog7)
-
-   The form will ask for:
-   - Your full name and contact details
-   - Your private GitHub repository URL
-   - Your GitHub username (for personalization verification)
-
-> Do not open a Pull Request to this repository. Submissions are private.
-
----
-
-## What We Look For
-
-| Area | What it signals |
-|---|---|
-| Data modeling | How you think about domain entities and relationships |
-| API design | Clarity, consistency, and REST conventions |
-| Monetary handling | Awareness of precision issues in financial systems |
-| Code structure | Separation of concerns, readability, maintainability |
-| Testing | What you consider worth testing and why |
-| Submission answer | Genuine engagement with the problem |
-
-We review every submission before the interview. The interview will include questions directly about your code — be ready to walk through it and extend it live.
-
-Good luck!
+The hardest decision was defining what settlement optimization should promise. I chose to net every participant's balance and use a deterministic greedy matcher because it is easy to verify, explain, and extend during an interview. This produces a compact settlement with at most `n - 1` transfers, but I accepted that it does not guarantee the mathematical minimum number of transfers for every possible balance combination. That trade-off keeps the core financial behavior predictable without introducing a combinatorial search algorithm into a small service.

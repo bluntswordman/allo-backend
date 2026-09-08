@@ -1,0 +1,281 @@
+{
+  "info": {
+    "_postman_id": "33b2f6df-8d5a-4c9a-82b0-74fb2bd68c5d",
+    "name": "Allo Split Bill API",
+    "description": "Postman collection for the Allo Split Bill API. Run the Happy Path folder in order after starting the API on localhost:4110.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Happy Path",
+      "item": [
+        {
+          "name": "1. Create Group",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 201', function () {",
+                  "  pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "const json = pm.response.json();",
+                  "pm.test('response contains group and three participants', function () {",
+                  "  pm.expect(json.id).to.be.a('string');",
+                  "  pm.expect(json.participants).to.have.length(3);",
+                  "});",
+                  "",
+                  "pm.collectionVariables.set('group_id', json.id);",
+                  "pm.collectionVariables.set('bedy_id', json.participants.find((participant) => participant.name === 'Bedy').id);",
+                  "pm.collectionVariables.set('ani_id', json.participants.find((participant) => participant.name === 'Ani').id);",
+                  "pm.collectionVariables.set('doni_id', json.participants.find((participant) => participant.name === 'Doni').id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Bali Trip\",\n  \"participants\": [\n    {\"name\": \"Bedy\"},\n    {\"name\": \"Ani\"},\n    {\"name\": \"Doni\"}\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{base_url}}/api/v1/groups",
+            "description": "Creates a group and stores group_id, bedy_id, ani_id, and doni_id as collection variables."
+          },
+          "response": []
+        },
+        {
+          "name": "2. Add Expense",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 201', function () {",
+                  "  pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "const json = pm.response.json();",
+                  "pm.test('expense is split across three participants', function () {",
+                  "  pm.expect(json.id).to.be.a('string');",
+                  "  pm.expect(json.amount).to.eql(100000);",
+                  "  pm.expect(json.shares).to.have.length(3);",
+                  "});",
+                  "",
+                  "pm.collectionVariables.set('expense_id', json.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"description\": \"Makan malam\",\n  \"amount\": 100000,\n  \"paid_by_participant_id\": \"{{bedy_id}}\",\n  \"beneficiary_participant_ids\": [\"{{bedy_id}}\", \"{{ani_id}}\", \"{{doni_id}}\"]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{base_url}}/api/v1/groups/{{group_id}}/expenses",
+            "description": "Adds one expense paid by Bedy and split equally between Bedy, Ani, and Doni."
+          },
+          "response": []
+        },
+        {
+          "name": "3. Get Settlement",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const json = pm.response.json();",
+                  "pm.test('settlement contains expected service charge metadata', function () {",
+                  "  pm.expect(json.total_expenses).to.eql(100000);",
+                  "  pm.expect(json.service_charge_pct).to.eql(4);",
+                  "  pm.expect(json.service_charge_amount).to.eql(4000);",
+                  "});",
+                  "",
+                  "pm.test('settlement has two transfers to Bedy', function () {",
+                  "  pm.expect(json.settlements).to.have.length(2);",
+                  "  pm.expect(json.settlements.every((transfer) => transfer.to_participant_name === 'Bedy')).to.eql(true);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/api/v1/groups/{{group_id}}/settlements",
+            "description": "Returns participant balances, suggested transfers, and service charge metadata."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Validation Cases",
+      "item": [
+        {
+          "name": "Duplicate Participant Names",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 400', function () {",
+                  "  pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test('problem detail is returned', function () {",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json.title).to.be.a('string');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Invalid Group\",\n  \"participants\": [\n    {\"name\": \"Bedy\"},\n    {\"name\": \"bedy\"}\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{base_url}}/api/v1/groups"
+          },
+          "response": []
+        },
+        {
+          "name": "Duplicate Beneficiary IDs",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 400', function () {",
+                  "  pm.response.to.have.status(400);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"description\": \"Invalid duplicate beneficiaries\",\n  \"amount\": 50000,\n  \"paid_by_participant_id\": \"{{bedy_id}}\",\n  \"beneficiary_participant_ids\": [\"{{ani_id}}\", \"{{ani_id}}\"]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{base_url}}/api/v1/groups/{{group_id}}/expenses",
+            "description": "Run the Happy Path Create Group request first so the participant variables exist."
+          },
+          "response": []
+        },
+        {
+          "name": "Unknown Group Settlement",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 404', function () {",
+                  "  pm.response.to.have.status(404);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/api/v1/groups/00000000-0000-0000-0000-000000000000/settlements"
+          },
+          "response": []
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:4110",
+      "type": "string"
+    },
+    {
+      "key": "group_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "bedy_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "ani_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "doni_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "expense_id",
+      "value": "",
+      "type": "string"
+    }
+  ]
+}

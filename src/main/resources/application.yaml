@@ -1,0 +1,19 @@
+server:
+  port: 4110
+
+spring:
+  application:
+    name: split-bill-api
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/split_bill}
+    username: ${DB_USERNAME:split_bill}
+    password: ${DB_PASSWORD:split_bill}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+  jackson:
+    property-naming-strategy: SNAKE_CASE
+
+split-bill:
+  github-username: ${GITHUB_USERNAME:bluntswordman}

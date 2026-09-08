@@ -1,0 +1,35 @@
+services:
+  database:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: split_bill
+      POSTGRES_USER: split_bill
+      POSTGRES_PASSWORD: split_bill
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U split_bill -d split_bill"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      database:
+        condition: service_healthy
+    environment:
+      DB_URL: jdbc:postgresql://database:5432/split_bill
+      DB_USERNAME: split_bill
+      DB_PASSWORD: split_bill
+      GITHUB_USERNAME: bluntswordman
+    ports:
+      - "4110:4110"
+
+volumes:
+  postgres-data:
+
+x-podman:
+  docker_compose_compat: true
